@@ -1,22 +1,23 @@
-
 #pragma once
-#include <spdlog/spdlog.h>
+
 #include <atomic>
-#include <thread>
 
-namespace shutdown {
-inline void run(std::atomic<bool>& stop, bool stress) {
-  spdlog::logger* raw = spdlog::default_logger_raw();
-  std::thread t([&] {
-    while (!stop.load()) raw->info("shutdown now");
-  });
+#include "test_base.h"
 
-  if (stress) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    spdlog::shutdown();
-  }
 
-  stop.store(true);
-  t.join();
-}
-}
+// ============================================================
+// ShutdownTest
+// ============================================================
+class ShutdownTest final : public TestBase
+{
+public:
+    static constexpr const char* k_name = "shutdown";
+    const char* name() const noexcept override { return k_name; }
+
+protected:
+    void run(const std::atomic<bool>& /*stop*/, bool /*stress*/) override
+    {
+        // We do not do anything here! As described in the documentation and in the new architecture: test objects are not allowed to shutdown spdlog. That's moderator's job being main.cpp in this project.
+        // The other part of the original code was raw->info("shutdown now"); which is done in a hot loop inside a spawned thread. Again not useful in this case and worth wiping out.
+    }
+};

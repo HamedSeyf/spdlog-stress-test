@@ -21,7 +21,7 @@ add_executable(spdlogger
 target_link_libraries(spdlogger PRIVATE spdlog::spdlog)
 
 if (MSVC)
-  target_compile_options(spdlogger PRIVATE /W4)
+  target_compile_options(spdlogger PRIVATE /W4 /WX)
 else()
-  target_compile_options(spdlogger PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(spdlogger PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()

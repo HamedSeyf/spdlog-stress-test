@@ -18,7 +18,7 @@
 #include "include/level5.h"
 #include "include/string_uaf.h"
 #include "include/sink_callback.h"
-#include "include/shutdown.h"
+#include "include/diagnostics.h"
 #include "include/timebase.h"
 
 
@@ -27,7 +27,7 @@
 // One entry per test. To add a new test: one line here.
 // --------------------------------------------------------
 struct TestEntry {
-    const char*                                  name;
+    std::string_view                             name;
     std::function<std::unique_ptr<TestBase>()>   create;
 };
 
@@ -35,7 +35,7 @@ static const std::vector<TestEntry> k_registry = {
     { StringUafTest::k_name,    [] { return std::make_unique<StringUafTest>();    } },
     { TimebaseTest::k_name,     [] { return std::make_unique<TimebaseTest>();     } },
     { LevelTest::k_name,        [] { return std::make_unique<LevelTest>();        } },
-    { ShutdownTest::k_name,     [] { return std::make_unique<ShutdownTest>();     } },
+    { DiagnosticsTest::k_name,  [] { return std::make_unique<DiagnosticsTest>();  } },
     { SinkCallbackTest::k_name, [] { return std::make_unique<SinkCallbackTest>(); } },
     { Level5Test::k_name,       [] { return std::make_unique<Level5Test>();       } },
 };
@@ -57,7 +57,7 @@ int main(int argc, char** argv)
         auto logger_thread_pool = std::make_shared<spdlog::details::thread_pool>(ctx.queue_size, 1);
 
         std::shared_ptr<spdlog::async_logger> main_logger = Helpers::make_logger(
-            ctx.filename.empty() ? test_context::k_default_logfile_name : ctx.filename,
+            ctx.filename.value_or(test_context::k_default_logfile_name.data()), // k_default_logfile_name is a string_view literal and always guaranteed to be null terminated so it's safe to use data() directly
             "main",
             logger_thread_pool,
             ctx.log_level,
@@ -67,32 +67,33 @@ int main(int argc, char** argv)
         // Phase 1 — create only non-ignored tests
         std::vector<std::unique_ptr<TestBase>> tests;
         tests.reserve(k_registry.size());
-        for (const auto& entry : k_registry)
+        // [[C++ 17 : Structured bindings]]
+        for (const auto& [test_name, create] : k_registry)
         {
-            if (!ctx.should_run(entry.name))
+            if (!ctx.should_run(test_name))
             {
-                main_logger->info("Skipping test '{}'", entry.name);
+                main_logger->info("Skipping test '{}'", test_name);
                 continue;  // factory never called — zero allocation
             }
-            tests.push_back(entry.create());
+            tests.push_back(create());
         }
 
         // Phase 2 — Configure all tests.
         for (auto& test : tests)
         {
-            if (ctx.filename.empty())
+            if (ctx.filename)
             {
-                test->configure_with_context(ctx);
+                test->configure(main_logger);
             }
             else
             {
-                test->configure_with_logger(main_logger);
+                test->configure(ctx);
             }
         }
 
         // Phase 3 — Start non-ignored tests.
-        DEOS_CACHE_ALIGN std::atomic<bool> stop{ false };
-        DEOS_CACHE_ALIGN std::atomic<int> active_tests_count{ 0 };
+        HAMEDSEYF_CACHE_ALIGN std::atomic<bool> stop{ false };
+        HAMEDSEYF_CACHE_ALIGN std::atomic<int> active_tests_count{ 0 };
 
         std::vector<std::thread> threads;
         threads.reserve(tests.size());
@@ -109,11 +110,11 @@ int main(int argc, char** argv)
                     }
                     catch (const std::exception& e)
                     {
-                        fprintf(stderr, "[fatal] test '%s' threw: %s\n", test_object->name(), e.what());
+                        fprintf(stderr, "[fatal] test '%s' threw: %s\n", test_object->name().data(), e.what()); // same as k_default_logfile_name, name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data() on the returned value
                     }
                     catch (...)
                     {
-                        fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", test_object->name());
+                        fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", test_object->name().data()); // same as k_default_logfile_name, name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data() on the returned value
                     }
 
                     active_tests_count.fetch_sub(1, std::memory_order_release);

@@ -14,8 +14,8 @@
 class TimebaseTest final : public TestBase
 {
 public:
-    static constexpr const char* k_name = "timebase";
-    const char* name() const noexcept override { return k_name; }
+    static constexpr std::string_view k_name = "timebase";
+    std::string_view name() const noexcept override { return k_name; }
 
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override

@@ -42,8 +42,8 @@ namespace sink_callback
 class SinkCallbackTest final : public TestBase
 {
 public:
-    static constexpr const char* k_name = "sink_callback";
-    const char* name() const noexcept override { return k_name; }
+    static constexpr std::string_view k_name = "sink_callback";
+    std::string_view name() const noexcept override { return k_name; }
 
 protected:
 
@@ -51,7 +51,7 @@ protected:
     {
         if (!stress)
         {
-            logger_->info("{} early exit in non-stress mode", name());
+            logger_->info("{} early exit in non-stress mode", name().data()); // name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data()
             return;
         }
 
@@ -63,7 +63,7 @@ protected:
         {
             logger->info("trigger");
 
-            DEOS_SPIN_OR_SLEEP_MS(stress, 100);
+            HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 100);
         }
     }
 };

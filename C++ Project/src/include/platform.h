@@ -4,13 +4,13 @@
 #include <thread>
 
 // ============================================================
-// DEOS_CACHE_ALIGN
+// HAMEDSEYF_CACHE_ALIGN
 // ============================================================
 // Aligns a variable to the platform's cache line size to prevent
 // false sharing between independently accessed atomic variables.
 //
 // Usage:
-//   DEOS_CACHE_ALIGN inline std::atomic<int> g_level{ 0 };
+//   HAMEDSEYF_CACHE_ALIGN inline std::atomic<int> g_level{ 0 };
 //
 // Platform behaviour:
 //   C++17 hardware_destructive_interference_size — compile-time exact value
@@ -22,16 +22,16 @@
 
 #ifdef __cpp_lib_hardware_interference_size
 	#include <new>
-	#define DEOS_CACHE_ALIGN alignas(std::hardware_destructive_interference_size)
+	#define HAMEDSEYF_CACHE_ALIGN alignas(std::hardware_destructive_interference_size)
 #elif defined(__arm__) || defined(__mips__)
-	#define DEOS_CACHE_ALIGN alignas(32)
+	#define HAMEDSEYF_CACHE_ALIGN alignas(32)
 #else
-	#define DEOS_CACHE_ALIGN alignas(64)
+	#define HAMEDSEYF_CACHE_ALIGN alignas(64)
 #endif
 
 
 // ============================================================
-// DEOS_CPU_RELAX()
+// HAMEDSEYF_CPU_RELAX()
 // ============================================================
 // Emits a lightweight CPU spin-wait hint for the current architecture.
 //
@@ -60,28 +60,28 @@
 #if defined(__x86_64__) || defined(_M_X64)
 	#if defined(_MSC_VER)
 		#include <intrin.h>
-		#define DEOS_CPU_RELAX() _mm_pause()
+		#define HAMEDSEYF_CPU_RELAX() _mm_pause()
 	#else
 		#include <x86intrin.h>
-		#define DEOS_CPU_RELAX() __builtin_ia32_pause()
+		#define HAMEDSEYF_CPU_RELAX() __builtin_ia32_pause()
 	#endif
 #elif defined(__aarch64__) || defined(_M_ARM64)
 	#if defined(_MSC_VER)
 		#include <intrin.h>
-		#define DEOS_CPU_RELAX() __yield()
+		#define HAMEDSEYF_CPU_RELAX() __yield()
 	#else
-		#define DEOS_CPU_RELAX() asm volatile("yield")
+		#define HAMEDSEYF_CPU_RELAX() asm volatile("yield")
 	#endif
 #else
-	#define DEOS_CPU_RELAX() ((void)0)
+	#define HAMEDSEYF_CPU_RELAX() ((void)0)
 #endif
 
 
 // ============================================================
-// DEOS_SPIN_OR_SLEEP_MS(stress, sleep_ms)
+// HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, sleep_ms)
 // ============================================================
 // In stress mode:
-//   Executes DEOS_CPU_RELAX().
+//   Executes HAMEDSEYF_CPU_RELAX().
 //   This keeps the thread active and maximizes hot-loop pressure while
 //   still giving the processor a spin hint.
 //
@@ -89,18 +89,18 @@
 //   Sleeps for sleep_ms milliseconds.
 //
 // Parameters:
-//   stress   — bool, true enables DEOS_CPU_RELAX path
+//   stress   — bool, true enables HAMEDSEYF_CPU_RELAX path
 //   sleep_ms — milliseconds to sleep in non-stress mode
 //
 // Usage:
-//   DEOS_SPIN_OR_SLEEP_MS(stress, 1);    // stress=CPU hint, non-stress=1ms sleep
-//   DEOS_SPIN_OR_SLEEP_MS(stress, 10);   // stress=CPU hint, non-stress=10ms sleep
+//   HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 1);    // stress=CPU hint, non-stress=1ms sleep
+//   HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 10);   // stress=CPU hint, non-stress=10ms sleep
 // ============================================================
 
-#define DEOS_SPIN_OR_SLEEP_MS(stress, sleep_ms)                                          \
+#define HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, sleep_ms)                                          \
     do {                                                                               \
         if ((stress)) {                                                                \
-            DEOS_CPU_RELAX();                                                          \
+            HAMEDSEYF_CPU_RELAX();                                                          \
         } else {                                                                       \
             std::this_thread::sleep_for(std::chrono::milliseconds((sleep_ms)));       \
         }                                                                              \

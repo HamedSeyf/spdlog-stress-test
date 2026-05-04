@@ -40,8 +40,8 @@ namespace level5
 class Level5Test final : public TestBase
 {
 public:
-    static constexpr const char* k_name = "level5";
-    const char* name() const noexcept override { return k_name; }
+    static constexpr std::string_view k_name = "level5";
+    std::string_view name() const noexcept override { return k_name; }
 
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override
@@ -55,7 +55,7 @@ protected:
         {
             obj.print(logger_ptr);
 
-            DEOS_SPIN_OR_SLEEP_MS(stress, 50);
+            HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 50);
         }
     }
 };

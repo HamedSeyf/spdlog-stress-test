@@ -18,9 +18,9 @@ namespace level
     // Tests:
     //   - fetch_add atomicity under concurrent read pressure
     //   - cache line ownership ping-pong between w and r
-    //   - DEOS_SPIN_OR_SLEEP_MS behaviour under both stress and non-stress modes
+    //   - HAMEDSEYF_SPIN_OR_SLEEP_MS behaviour under both stress and non-stress modes
     //
-    // DEOS_CACHE_ALIGN: g_level gets its own cache line — prevents false sharing
+    // HAMEDSEYF_CACHE_ALIGN: g_level gets its own cache line — prevents false sharing
     // with any adjacent variables. fetch_add from w won't invalidate other lines.
     //
     // Architecture note: w and r are internal to run() and managed here.
@@ -28,7 +28,7 @@ namespace level
     // A better approach for performance-sensitive use would be to return the threads
     // to the caller, but that would change the TestBase interface.
 
-    DEOS_CACHE_ALIGN inline std::atomic<int> g_level{ 0 };
+    HAMEDSEYF_CACHE_ALIGN inline std::atomic<int> g_level{ 0 };
 
 } // namespace level
 
@@ -39,8 +39,8 @@ namespace level
 class LevelTest final : public TestBase
 {
 public:
-    static constexpr const char* k_name = "level";
-    const char* name() const noexcept override { return k_name; }
+    static constexpr std::string_view k_name = "level";
+    std::string_view name() const noexcept override { return k_name; }
 
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override
@@ -59,7 +59,7 @@ protected:
                 {
                     level::g_level.fetch_add(1, std::memory_order_relaxed);
 
-                    DEOS_SPIN_OR_SLEEP_MS(stress, 1);
+                    HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 1);
                 }
             });
 
@@ -81,7 +81,7 @@ protected:
                             logger_ptr->info("even");
                         }
 
-                        DEOS_SPIN_OR_SLEEP_MS(stress, 1);
+                        HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 1);
                     }
                 });
         }

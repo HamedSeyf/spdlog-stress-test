@@ -39,6 +39,7 @@ namespace string_uaf
 
         void emit(spdlog::logger* const log) const
         {
+            // [[C++ 17 : std::string_view]]
             log->info("{}", std::string_view(data, static_cast<size_t>(data_len)));
         }
     };
@@ -52,8 +53,8 @@ namespace string_uaf
 class StringUafTest final : public TestBase
 {
 public:
-    static constexpr const char* k_name = "string_uaf";
-    const char* name() const noexcept override { return k_name; }
+    static constexpr std::string_view k_name = "string_uaf";
+    std::string_view name() const noexcept override { return k_name; }
 
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override
@@ -72,7 +73,7 @@ protected:
             d.emit(logger_ptr);
 
             // Loop throttle: in stress mode emit CPU hint, in non-stress sleep 10ms.
-            DEOS_SPIN_OR_SLEEP_MS(stress, 10);
+            HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 10);
         }
     }
 };

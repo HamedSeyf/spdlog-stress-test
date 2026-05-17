@@ -12,6 +12,7 @@
 
 #include "include/test_context.h"
 #include "include/test_base.h"
+#include "include/thread_pool.h"
 #include "include/platform.h"
 
 #include "include/level.h"
@@ -20,6 +21,8 @@
 #include "include/sink_callback.h"
 #include "include/diagnostics.h"
 #include "include/timebase.h"
+#include "include/concurrent_metrics.h"
+#include "include/producer_consumer_queue.h"
 
 
 // --------------------------------------------------------
@@ -32,12 +35,14 @@ struct TestEntry {
 };
 
 static const std::vector<TestEntry> k_registry = {
-    { StringUafTest::k_name,    [] { return std::make_unique<StringUafTest>();    } },
-    { TimebaseTest::k_name,     [] { return std::make_unique<TimebaseTest>();     } },
-    { LevelTest::k_name,        [] { return std::make_unique<LevelTest>();        } },
-    { DiagnosticsTest::k_name,  [] { return std::make_unique<DiagnosticsTest>();  } },
-    { SinkCallbackTest::k_name, [] { return std::make_unique<SinkCallbackTest>(); } },
-    { Level5Test::k_name,       [] { return std::make_unique<Level5Test>();       } },
+    { StringUafTest::k_name,                [] { return std::make_unique<StringUafTest>();              } },
+    { TimebaseTest::k_name,                 [] { return std::make_unique<TimebaseTest>();               } },
+    { LevelTest::k_name,                    [] { return std::make_unique<LevelTest>();                  } },
+    { DiagnosticsTest::k_name,              [] { return std::make_unique<DiagnosticsTest>();            } },
+    { SinkCallbackTest::k_name,             [] { return std::make_unique<SinkCallbackTest>();           } },
+    { Level5Test::k_name,                   [] { return std::make_unique<Level5Test>();                 } },
+    { ConcurrentMetricsTest::k_name,        [] { return std::make_unique<ConcurrentMetricsTest>();      } },
+    { ProducerConsumerQueueTest::k_name,    [] { return std::make_unique<ProducerConsumerQueueTest>();  } },
 };
 
 int main(int argc, char** argv)
@@ -95,14 +100,13 @@ int main(int argc, char** argv)
         HAMEDSEYF_CACHE_ALIGN std::atomic<bool> stop{ false };
         HAMEDSEYF_CACHE_ALIGN std::atomic<int> active_tests_count{ 0 };
 
-        std::vector<std::thread> threads;
-        threads.reserve(tests.size());
+        ThreadPool test_thread_pool(ctx.max_threads);
 
         for (auto& test : tests)
         {
             active_tests_count.fetch_add(1, std::memory_order_relaxed);
 
-            threads.push_back(std::thread([&active_tests_count, &stop, stress = ctx.stress, test_object = test.get()]
+            test_thread_pool.Submit([&active_tests_count, &stop, stress = ctx.stress, test_object = test.get()]
                 {
                     try
                     {
@@ -118,7 +122,7 @@ int main(int argc, char** argv)
                     }
 
                     active_tests_count.fetch_sub(1, std::memory_order_release);
-                }));
+                });
         }
 
         // Main / Heartbeat loop — runs for ctx.seconds OR until all tests exit, whichever comes first.
@@ -137,12 +141,9 @@ int main(int argc, char** argv)
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
-        // Phase 4 — Signal stop, join all threads, shut down logger.
+        // Phase 4 — Signal stop, join all threads via threadpool, shut down logger.
         stop.store(true, std::memory_order_release);
-        for (auto& t : threads)
-        {
-            t.join();
-        }
+        test_thread_pool.Wait();
 
         tests.clear();                    // per-test loggers and pools freed
         logger_thread_pool.reset();       // main pool background thread joins cleanly

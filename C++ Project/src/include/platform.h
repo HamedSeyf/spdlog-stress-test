@@ -105,3 +105,78 @@
             std::this_thread::sleep_for(std::chrono::milliseconds((sleep_ms)));       \
         }                                                                              \
     } while (0)
+
+
+// ============================================================
+// HAMEDSEYF_SCOPE_EXIT(lambda)
+// ============================================================
+// Creates a scope guard that automatically executes the provided
+// lambda when the current scope exits.
+//
+// Triggers on:
+//   - Normal scope exit
+//   - Early return
+//   - Exception unwinding
+//
+// Useful for:
+//   - Thread joining
+//   - Mutex unlock style cleanup
+//   - Temporary state restoration
+//   - Resource cleanup
+//
+// Notes:
+//   - Executes exactly once when the generated guard object is destroyed
+//   - Uses a unique variable name internally via __LINE__
+//   - Cleanup order follows normal C++ destruction rules
+//     (reverse order of declaration)
+//
+// Parameters:
+//   lambda — callable object executed on scope exit
+//
+// Usage:
+//   HAMEDSEYF_SCOPE_EXIT(
+//       [this]()
+//       {
+//           Wait();
+//       });
+//
+//   HAMEDSEYF_SCOPE_EXIT(
+//       []()
+//       {
+//           printf("Leaving scope\n");
+//       });
+// ============================================================
+
+template<typename FuncType>
+class ScopeExit
+{
+public:
+	explicit ScopeExit(FuncType&& Func)
+		: Func_(std::forward<FuncType>(Func))
+	{}
+
+	~ScopeExit()
+	{
+		Func_();
+	}
+
+	ScopeExit(const ScopeExit&) = delete;
+	ScopeExit& operator=(const ScopeExit&) = delete;
+
+private:
+	FuncType Func_;
+};
+
+template<typename FuncType>
+ScopeExit<FuncType> MakeScopeExit(FuncType&& Func)
+{
+	return ScopeExit<FuncType>(
+		std::forward<FuncType>(Func));
+}
+
+#define HAMEDSEYF_CONCAT_IMPL(X, Y) X##Y
+#define HAMEDSEYF_CONCAT(X, Y) HAMEDSEYF_CONCAT_IMPL(X, Y)
+
+#define HAMEDSEYF_SCOPE_EXIT(Func) \
+	auto HAMEDSEYF_CONCAT(scope_exit_, __LINE__) = \
+		MakeScopeExit(Func)

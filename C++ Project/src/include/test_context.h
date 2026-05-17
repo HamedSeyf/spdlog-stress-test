@@ -38,6 +38,7 @@ struct TestContext
     size_t                              queue_size  = 8192;  // async logger queue capacity in messages
     // [[C++ 17 : std::optional]]
     std::optional<std::string>          filename    = std::nullopt;         // std::nullopt = no global file logger between tests (main log still goes into "output.log")
+    std::optional<int>                  max_threads = std::nullopt;
     std::unordered_set<std::string>     ignore_tests;     // empty = run all
 
     // Returns true if the named test should be included in current run
@@ -111,6 +112,22 @@ struct TestContext
             else if (std::strcmp(argv[i], "--filename") == 0 && i + 1 < argc)
             {
                 ctx.filename = argv[++i];
+            }
+
+            // --maxthreads maximum number of threads to be used by main.cpp
+            else if (std::strcmp(argv[i], "--maxthreads") == 0 && i + 1 < argc)
+            {
+                char* end = nullptr;
+
+                if (const long val = std::strtol(argv[++i], &end, 10);
+                    end != argv[i] && val > 0 && val <= INT_MAX)
+                {
+                    ctx.max_threads = static_cast<int>(val);
+                }
+                else
+                {
+                    fprintf(stderr, "[args] invalid --maxthreads value '%s', using unlimited threads\n", argv[i]);
+                }
             }
 
             // --ignoretests A,B,C

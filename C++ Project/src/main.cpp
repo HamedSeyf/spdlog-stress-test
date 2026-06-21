@@ -24,7 +24,9 @@
 #include "include/concurrent_metrics.h"
 #include "include/producer_consumer_queue.h"
 // Just to get the file compiled although they are not used in the solution
+#include "include/non_test/expiring_cache.h"
 #include "include/non_test/notification_manager.h"
+#include "include/non_test/sorts.h"
 
 
 // --------------------------------------------------------

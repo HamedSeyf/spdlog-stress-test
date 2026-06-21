@@ -28,7 +28,7 @@ namespace string_uaf
 
     struct DeferredLog
     {
-        char data[32];
+        char data[32] = {};
         int  data_len = 0;
 
         void set()

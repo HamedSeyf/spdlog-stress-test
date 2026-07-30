@@ -16,7 +16,8 @@
 #include <string>
 #include <cstdio>
 
-#include <spdlog/spdlog.h>
+// TODO: temp remove post testing
+#include "generic_notification_manager.h"
 
 
 // ============================================================
@@ -79,8 +80,12 @@ struct ObserverData
 // ============================================================
 // RideStateManager
 // ============================================================
-class RideStateManager
+class RideStateManager : public TestBase
 {
+public:
+    static constexpr std::string_view k_name = "ride_state_manager";
+    std::string_view name() const noexcept override { return k_name; }
+
 public:
 
 	RideStateManager()
@@ -176,6 +181,16 @@ public:
 
 	bool Subscribe(const std::shared_ptr<IObserverDispatcher>& Dispatcher, const std::shared_ptr<IRideStateObserver>&  Observer)
 	{
+		using TNotificationManager = TNotificationManager<std::string, std::uint64_t>;
+		[[maybe_unused]] uint64_t handle = TNotificationManager::GetInstance().subscribe("asd", [](const std::string&, const void*)
+			{
+			});
+
+		if (handle > 0)
+		{
+			TNotificationManager::GetInstance().unSubscribe(handle);
+		}
+
 		if (!Dispatcher || !Observer)
 		{
 			return false;

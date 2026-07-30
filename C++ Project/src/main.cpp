@@ -23,9 +23,9 @@
 #include "include/timebase.h"
 #include "include/concurrent_metrics.h"
 #include "include/producer_consumer_queue.h"
+#include "include/ride_state_manager.h"
 // Just to get the file compiled although they are not used in the solution
 #include "include/non_test/expiring_cache.h"
-#include "include/non_test/notification_manager.h"
 #include "include/non_test/sorts.h"
 
 
@@ -47,6 +47,7 @@ static const std::vector<TestEntry> k_registry = {
     { Level5Test::k_name,                   [] { return std::make_unique<Level5Test>();                 } },
     { ConcurrentMetricsTest::k_name,        [] { return std::make_unique<ConcurrentMetricsTest>();      } },
     { ProducerConsumerQueueTest::k_name,    [] { return std::make_unique<ProducerConsumerQueueTest>();  } },
+    { RideStateManager::k_name,             [] { return std::make_unique<RideStateManager>();  } },
 };
 
 int main(int argc, char** argv)

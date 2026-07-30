@@ -144,6 +144,7 @@ Logger names are automatically embedded via spdlog’s `%n` pattern.
 ## Build
 
 cmake -S . -B build
+
 cmake --build build
 
 ---

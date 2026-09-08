@@ -4,7 +4,8 @@
 #include <memory>
 #include <thread>
 
-#include "platform.h"
+#include "hamed_common/platform.h"
+
 #include "test_base.h"
 
 

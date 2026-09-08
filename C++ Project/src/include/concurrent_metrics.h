@@ -16,8 +16,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include "hamed_common/platform.h"
+
 #include "test_base.h"
-#include "platform.h"
 
 
 namespace concurrent_metrics
@@ -116,7 +117,7 @@ protected:
         worker_threads_.clear();
         shared_data_.reset();
 
-        // Extract raw observer pointer once — stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
+        // Extract raw observer pointer once ï¿½ stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
         spdlog::logger* const logger_ptr = logger_.get();
 
         constexpr unsigned workers_count = 3; // Whats the best naming convention for such consts and is this the best spot to put these file scoped constexpr?
@@ -275,7 +276,14 @@ private:
     std::mutex shared_data_mutex_;
     std::optional<concurrent_metrics::Event> shared_data_;
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324) // structure padded due to alignas â€” expected for cache-line alignment
+#endif
     HAMEDSEYF_CACHE_ALIGN std::atomic<bool> internal_stop_ { false };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
     void Wait()
     {

@@ -13,7 +13,6 @@
 #include "include/test_context.h"
 #include "include/test_base.h"
 #include "include/thread_pool.h"
-#include "include/platform.h"
 
 #include "include/level.h"
 #include "include/level5.h"
@@ -26,7 +25,9 @@
 #include "include/ride_state_manager.h"
 // Just to get the file compiled although they are not used in the solution
 #include "include/non_test/expiring_cache.h"
-#include "include/non_test/sorts.h"
+
+#include "hamed_common/platform.h"
+#include "hamed_common/sorts.h"
 
 
 // --------------------------------------------------------

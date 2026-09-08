@@ -7,7 +7,8 @@
 #include <unordered_map>
 #include <variant>
 
-#include "platform.h"
+#include "hamed_common/platform.h"
+
 #include "test_base.h"
 
 namespace diagnostics
@@ -49,8 +50,8 @@ namespace diagnostics
 // ============================================================
 // Two internal threads share metrics_mutex_ and log_buffer_mutex_:
 //
-//   collector — natural order: metrics_ first, then log_buffer_
-//   reporter  — natural order: log_buffer_ first, then metrics_
+//   collector ï¿½ natural order: metrics_ first, then log_buffer_
+//   reporter  ï¿½ natural order: log_buffer_ first, then metrics_
 //
 // These opposite natural orderings would deadlock if each thread
 // acquired the two mutexes with separate lock_guards.
@@ -85,7 +86,7 @@ protected:
 
                     // Acquires both locks atomically.
                     // Natural order here is metrics -> buffer, which is the
-                    // OPPOSITE of reporter's natural order — deadlock territory
+                    // OPPOSITE of reporter's natural order ï¿½ deadlock territory
                     // without scoped_lock.
                     // [[C++ 17 : std::scoped_lock]]
                     std::scoped_lock lock(metrics_mutex, log_buffer_mutex);
@@ -110,7 +111,7 @@ protected:
 
         // ---- reporter ----
         // Natural acquisition order: log_buffer_mutex_ -> metrics_mutex_
-        // Drains log_buffer_ first, then reads metrics_ for the count — inverted
+        // Drains log_buffer_ first, then reads metrics_ for the count ï¿½ inverted
         // relative to collector. This is what makes the two-mutex scoped_lock
         // load-bearing rather than decorative.
         std::thread reporter;
@@ -142,7 +143,7 @@ protected:
         }
         catch (...)
         {
-            // reporter failed to start — join collector before propagating
+            // reporter failed to start ï¿½ join collector before propagating
             collector.join();
             throw;
         }
@@ -150,7 +151,7 @@ protected:
         collector.join();
         reporter.join();
 
-        // Post-run summary via std::any — caller can inspect without a virtual method
+        // Post-run summary via std::any ï¿½ caller can inspect without a virtual method
         const int64_t final_iterations = iteration.load(std::memory_order_relaxed);
 
         // [[C++ 17 : std::any]]

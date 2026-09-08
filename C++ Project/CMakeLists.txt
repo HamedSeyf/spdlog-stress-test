@@ -4,6 +4,7 @@ project(spdlog_misuse_lab LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_UNITY_BUILD OFF)
 
@@ -16,11 +17,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+add_subdirectory(submodules/hamed_common)
+
 add_executable(spdlogger
   src/main.cpp
 )
 
-target_link_libraries(spdlogger PRIVATE spdlog::spdlog)
+target_link_libraries(spdlogger PRIVATE spdlog::spdlog hamed_common)
 
 if (MSVC)
   target_compile_options(spdlogger PRIVATE /W4 /WX)

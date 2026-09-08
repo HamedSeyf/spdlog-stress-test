@@ -8,7 +8,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include "platform.h"
+#include "hamed_common/platform.h"
+
 #include "test_base.h"
 
 namespace string_uaf

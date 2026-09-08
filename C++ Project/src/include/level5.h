@@ -7,7 +7,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include "platform.h"
+#include "hamed_common/platform.h"
+
 #include "test_base.h"
 
 namespace level5
@@ -46,7 +47,7 @@ public:
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override
     {
-        // Extract raw observer pointer once — stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
+        // Extract raw observer pointer once ï¿½ stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
         spdlog::logger* const logger_ptr = logger_.get();
 
         level5::Level5 obj("level 5 logs");

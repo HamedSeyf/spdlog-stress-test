@@ -48,7 +48,7 @@ static const std::vector<TestEntry> k_registry = {
     { Level5Test::k_name,                   [] { return std::make_unique<Level5Test>();                 } },
     { ConcurrentMetricsTest::k_name,        [] { return std::make_unique<ConcurrentMetricsTest>();      } },
     { ProducerConsumerQueueTest::k_name,    [] { return std::make_unique<ProducerConsumerQueueTest>();  } },
-    { RideStateManager::k_name,             [] { return std::make_unique<RideStateManager>();  } },
+    { RideStateManagerTest::k_name,         [] { return std::make_unique<RideStateManagerTest>();  } },
 };
 
 int main(int argc, char** argv)

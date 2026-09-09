@@ -75,9 +75,9 @@ struct ObserverData
 
 
 // ============================================================
-// RideStateManager
+// RideStateManagerTest
 // ============================================================
-class RideStateManager : public TestBase
+class RideStateManagerTest : public TestBase
 {
 public:
     static constexpr std::string_view k_name = "ride_state_manager";
@@ -161,7 +161,7 @@ public:
 			});
 	}
 
-	virtual ~RideStateManager()
+	virtual ~RideStateManagerTest()
 	{
 		{
 			std::lock_guard<std::mutex> lock(notificationsMutex_);

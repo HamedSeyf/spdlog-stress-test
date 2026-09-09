@@ -19,7 +19,7 @@ namespace string_uaf
         // thread_local RNG: each thread has its own seeded mt19937 instance.
         // Zero contention — no locks, no shared state, no std::rand() global mutation.
         // Constructed once per thread on first call, reused on all subsequent calls.
-        inline uint32_t next_rand()
+        inline uint32_t nextRand()
         {
             thread_local std::mt19937 rng{ std::random_device{}() };
             thread_local std::uniform_int_distribution<uint32_t> dist;
@@ -30,18 +30,18 @@ namespace string_uaf
     struct DeferredLog
     {
         char data[32] = {};
-        int  data_len = 0;
+        int  dataLen = 0;
 
         void set()
         {
-            data_len = std::snprintf(data, sizeof(data),
-                "deferred=uaf:%u", detail::next_rand());
+            dataLen = std::snprintf(data, sizeof(data),
+                "deferred=uaf:%u", detail::nextRand());
         }
 
         void emit(spdlog::logger* const log) const
         {
             // [[C++ 17 : std::string_view]]
-            log->info("{}", std::string_view(data, static_cast<size_t>(data_len)));
+            log->info("{}", std::string_view(data, static_cast<size_t>(dataLen)));
         }
     };
 
@@ -61,7 +61,7 @@ protected:
     void run(const std::atomic<bool>& stop, bool stress) override
     {
         // Extract raw observer pointer once — stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
-        spdlog::logger* const logger_ptr = logger_.get();
+        spdlog::logger* const loggerPtr = logger_.get();
 
         string_uaf::DeferredLog d;  // hoisted — buffer capacity survives across iterations
 
@@ -71,7 +71,7 @@ protected:
 
             std::this_thread::sleep_for(std::chrono::microseconds(stress ? 50 : 500));
 
-            d.emit(logger_ptr);
+            d.emit(loggerPtr);
 
             // Loop throttle: in stress mode emit CPU hint, in non-stress sleep 10ms.
             HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 10);

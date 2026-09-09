@@ -17,7 +17,7 @@ namespace diagnostics
     using MetricValue = std::variant<int64_t, double, std::string>;
 
     // Formats any MetricValue to string via std::visit + if constexpr
-    inline std::string format_metric(const MetricValue& v)
+    inline std::string formatMetric(const MetricValue& v)
     {
         return std::visit([](const auto& val) -> std::string
             {
@@ -40,7 +40,7 @@ namespace diagnostics
     struct ReportSummary
     {
         int64_t iterations = 0;
-        int64_t metric_count = 0;
+        int64_t metricCount = 0;
     };
 } // namespace diagnostics
 
@@ -48,10 +48,10 @@ namespace diagnostics
 // ============================================================
 // DiagnosticsTest
 // ============================================================
-// Two internal threads share metrics_mutex_ and log_buffer_mutex_:
+// Two internal threads share metricsMutex_ and logBufferMutex_:
 //
-//   collector � natural order: metrics_ first, then log_buffer_
-//   reporter  � natural order: log_buffer_ first, then metrics_
+//   collector � natural order: metrics_ first, then logBuffer_
+//   reporter  � natural order: logBuffer_ first, then metrics_
 //
 // These opposite natural orderings would deadlock if each thread
 // acquired the two mutexes with separate lock_guards.
@@ -72,13 +72,13 @@ public:
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override
     {
-        spdlog::logger* const logger_ptr = logger_.get();
+        spdlog::logger* const loggerPtr = logger_.get();
         std::atomic<int64_t>  iteration{ 0 };
 
         // ---- collector ----
-        // Natural acquisition order: metrics_mutex_ -> log_buffer_mutex_
-        // Updates the metrics map, then appends a formatted snapshot to log_buffer_.
-        std::thread collector([&stop, stress, &iteration, &metrics_mutex=metrics_mutex_, &log_buffer_mutex=log_buffer_mutex_, &metrics=metrics_, &log_buffer=log_buffer_]
+        // Natural acquisition order: metricsMutex_ -> logBufferMutex_
+        // Updates the metrics map, then appends a formatted snapshot to logBuffer_.
+        std::thread collector([&stop, stress, &iteration, &metricsMutex=metricsMutex_, &logBufferMutex=logBufferMutex_, &metrics=metrics_, &logBuffer=logBuffer_]
             {
                 while (!stop.load(std::memory_order_acquire))
                 {
@@ -89,7 +89,7 @@ protected:
                     // OPPOSITE of reporter's natural order � deadlock territory
                     // without scoped_lock.
                     // [[C++ 17 : std::scoped_lock]]
-                    std::scoped_lock lock(metrics_mutex, log_buffer_mutex);
+                    std::scoped_lock lock(metricsMutex, logBufferMutex);
 
                     if (auto [it, inserted] = metrics.emplace("iteration", diagnostics::MetricValue{ i }); !inserted)
                     {
@@ -101,40 +101,40 @@ protected:
 
                     for (const auto& [key, value] : metrics)
                     {
-                        log_buffer += key + "=" + diagnostics::format_metric(value) + " ";
+                        logBuffer += key + "=" + diagnostics::formatMetric(value) + " ";
                     }
-                    log_buffer += '\n';
+                    logBuffer += '\n';
 
                     HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 20);
                 }
             });
 
         // ---- reporter ----
-        // Natural acquisition order: log_buffer_mutex_ -> metrics_mutex_
-        // Drains log_buffer_ first, then reads metrics_ for the count � inverted
+        // Natural acquisition order: logBufferMutex_ -> metricsMutex_
+        // Drains logBuffer_ first, then reads metrics_ for the count � inverted
         // relative to collector. This is what makes the two-mutex scoped_lock
         // load-bearing rather than decorative.
         std::thread reporter;
         try
         {
-            reporter = std::thread([&stop, stress, logger_ptr, &metrics_mutex=metrics_mutex_, &log_buffer_mutex=log_buffer_mutex_, &metrics=metrics_, &log_buffer=log_buffer_]
+            reporter = std::thread([&stop, stress, loggerPtr, &metricsMutex=metricsMutex_, &logBufferMutex=logBufferMutex_, &metrics=metrics_, &logBuffer=logBuffer_]
                 {
                     while (!stop.load(std::memory_order_acquire))
                     {
-                        std::string drained_buffer;
-                        int64_t     metric_count = 0;
+                        std::string drainedBuffer;
+                        int64_t     metricCount = 0;
 
                         {
                             // Note the listing order: log_buffer first, then metrics.
                             // Opposite of collector. std::scoped_lock resolves this safely.
-                            std::scoped_lock lock(log_buffer_mutex, metrics_mutex);
-                            drained_buffer.swap(log_buffer);
-                            metric_count = static_cast<int64_t>(metrics.size());
+                            std::scoped_lock lock(logBufferMutex, metricsMutex);
+                            drainedBuffer.swap(logBuffer);
+                            metricCount = static_cast<int64_t>(metrics.size());
                         }
 
-                        if (!drained_buffer.empty())
+                        if (!drainedBuffer.empty())
                         {
-                            logger_ptr->info("[reporter] {} metric(s): {}", metric_count, drained_buffer);
+                            loggerPtr->info("[reporter] {} metric(s): {}", metricCount, drainedBuffer);
                         }
 
                         HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 100);
@@ -152,24 +152,24 @@ protected:
         reporter.join();
 
         // Post-run summary via std::any � caller can inspect without a virtual method
-        const int64_t final_iterations = iteration.load(std::memory_order_relaxed);
+        const int64_t finalIterations = iteration.load(std::memory_order_relaxed);
 
         // [[C++ 17 : std::any]]
-        std::any diagnostic_tag = diagnostics::ReportSummary{
-            final_iterations,
+        std::any diagnosticTag = diagnostics::ReportSummary{
+            finalIterations,
             static_cast<int64_t>(metrics_.size())
         };
 
-        if (const auto* s = std::any_cast<diagnostics::ReportSummary>(&diagnostic_tag))
+        if (const auto* s = std::any_cast<diagnostics::ReportSummary>(&diagnosticTag))
         {
-            logger_ptr->info("[{}] post-run: iters={} metrics={}", name().data(), s->iterations, s->metric_count); // name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data()
+            loggerPtr->info("[{}] post-run: iters={} metrics={}", name().data(), s->iterations, s->metricCount); // name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data()
         }
     }
 
 private:
-    std::mutex metrics_mutex_;
-    std::mutex log_buffer_mutex_;
+    std::mutex metricsMutex_;
+    std::mutex logBufferMutex_;
 
     std::unordered_map<std::string, diagnostics::MetricValue> metrics_;
-    std::string log_buffer_;        // drained by reporter, filled by collector
+    std::string logBuffer_;        // drained by reporter, filled by collector
 };

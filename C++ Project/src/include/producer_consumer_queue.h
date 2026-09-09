@@ -18,9 +18,9 @@ namespace producer_consumer_queue
 {
     struct WorkItem
     {
-        unsigned ProducerId = 0;
-        unsigned SequenceId = 0;
-        std::chrono::steady_clock::time_point CreatedAt;
+        unsigned producerId = 0;
+        unsigned sequenceId = 0;
+        std::chrono::steady_clock::time_point createdAt;
     };
 }
 
@@ -37,35 +37,35 @@ public:
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override
     {
-        // Extract raw observer pointer once — stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
-        spdlog::logger* const logger_ptr = logger_.get();
+        // Extract raw observer pointer once ï¿½ stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
+        spdlog::logger* const loggerPtr = logger_.get();
 
-        constexpr unsigned producer_count = 2;
-        constexpr unsigned consumer_count = 2;
-        constexpr unsigned max_queue_size = 2000;
+        constexpr unsigned producerCount = 2;
+        constexpr unsigned consumerCount = 2;
+        constexpr unsigned maxQueueSize = 2000;
 
         // First creating producer threads
-        for (unsigned producer_id = 0; producer_id < producer_count; ++producer_id)
+        for (unsigned producerId = 0; producerId < producerCount; ++producerId)
         {
-            threads_.emplace_back([&stop, stress, &work_items_mutex = work_items_mutex_, &work_items = work_items_, &work_items_cv = work_items_cv_, &latest_sequence_id = latest_sequence_id_, producer_id]()
+            threads_.emplace_back([&stop, stress, &workItemsMutex = workItemsMutex_, &workItems = workItems_, &workItemsCv = workItemsCv_, &latestSequenceId = latestSequenceId_, producerId]()
                 {
                     while (!stop.load(std::memory_order_acquire))
                     {
-                        bool should_notify = false;
+                        bool shouldNotify = false;
 
                         {
-                            std::lock_guard<std::mutex> lock(work_items_mutex);
+                            std::lock_guard<std::mutex> lock(workItemsMutex);
 
-                            if (work_items.size() < max_queue_size)
+                            if (workItems.size() < maxQueueSize)
                             {
-                                work_items.push(producer_consumer_queue::WorkItem{ producer_id, latest_sequence_id++, std::chrono::steady_clock::now() });
-                                should_notify = true;
+                                workItems.push(producer_consumer_queue::WorkItem{ producerId, latestSequenceId++, std::chrono::steady_clock::now() });
+                                shouldNotify = true;
                             }
                         }
 
-                        if (should_notify)
+                        if (shouldNotify)
                         {
-                            work_items_cv.notify_one();
+                            workItemsCv.notify_one();
                         }
 
                         HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 50);
@@ -74,20 +74,20 @@ protected:
         }
 
         // And now creating consumer threads
-        for (unsigned consumer_id = 0; consumer_id < consumer_count; ++consumer_id)
+        for (unsigned consumerId = 0; consumerId < consumerCount; ++consumerId)
         {
-            threads_.emplace_back([&stop, stress, &work_items_mutex = work_items_mutex_, &work_items = work_items_, &work_items_cv = work_items_cv_, consumer_id, logger_ptr]()
+            threads_.emplace_back([&stop, stress, &workItemsMutex = workItemsMutex_, &workItems = workItems_, &workItemsCv = workItemsCv_, consumerId, loggerPtr]()
                 {
-                    std::unique_lock<std::mutex> lock(work_items_mutex);
+                    std::unique_lock<std::mutex> lock(workItemsMutex);
 
                     while (!stop.load(std::memory_order_acquire))
                     {
-                        work_items_cv.wait_for(lock, std::chrono::milliseconds(10), [&work_items, &stop]
+                        workItemsCv.wait_for(lock, std::chrono::milliseconds(10), [&workItems, &stop]
                             {
-                                return stop.load(std::memory_order_acquire) || !work_items.empty();
+                                return stop.load(std::memory_order_acquire) || !workItems.empty();
                             });
 
-                        if (work_items.empty())
+                        if (workItems.empty())
                         {
                             if (stop.load(std::memory_order_acquire))
                             {
@@ -97,44 +97,44 @@ protected:
                             continue;
                         }
 
-                        producer_consumer_queue::WorkItem popped_item(std::move(work_items.front()));
-                        work_items.pop();
+                        producer_consumer_queue::WorkItem poppedItem(std::move(workItems.front()));
+                        workItems.pop();
 
-                        const size_t work_items_size = work_items.size();
+                        const size_t workItemsSize = workItems.size();
 
                         lock.unlock();
 
-                        const long long latency_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - popped_item.CreatedAt).count();
+                        const long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - poppedItem.createdAt).count();
 
-                        logger_ptr->info("consumer={} producer={} seq={} latency_us={} queue_size={}", consumer_id, popped_item.ProducerId, popped_item.SequenceId, latency_us, work_items_size);
+                        loggerPtr->info("consumer={} producer={} seq={} latency_us={} queue_size={}", consumerId, poppedItem.producerId, poppedItem.sequenceId, latencyUs, workItemsSize);
 
                         lock.lock();
                     }
                 });
         }
 
-        Wait();
+        wait();
     }
 
 private:
-    std::mutex work_items_mutex_;
-    std::queue<producer_consumer_queue::WorkItem> work_items_;
-    std::condition_variable work_items_cv_;
-    unsigned latest_sequence_id_ = 0;
+    std::mutex workItemsMutex_;
+    std::queue<producer_consumer_queue::WorkItem> workItems_;
+    std::condition_variable workItemsCv_;
+    unsigned latestSequenceId_ = 0;
 
     std::vector<std::thread> threads_;
 
-    void Wait()
+    void wait()
     {
-        std::vector<std::thread> local_threads;
+        std::vector<std::thread> localThreads;
 
-        local_threads.swap(threads_);
+        localThreads.swap(threads_);
 
-        for (std::thread& current_thread : local_threads)
+        for (std::thread& currentThread : localThreads)
         {
-            if (current_thread.joinable())
+            if (currentThread.joinable())
             {
-                current_thread.join();
+                currentThread.join();
             }
         }
     }

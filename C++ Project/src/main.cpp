@@ -65,13 +65,13 @@ int main(int argc, char** argv)
         TestContext ctx = TestContext::parse(argc, argv);
 
         // Main / Shared Logger setup.
-        auto logger_thread_pool = std::make_shared<spdlog::details::thread_pool>(ctx.queue_size, 1);
+        auto loggerThreadPool = std::make_shared<spdlog::details::thread_pool>(ctx.queueSize, 1);
 
-        std::shared_ptr<spdlog::async_logger> main_logger = Helpers::make_logger(
-            ctx.filename.value_or(test_context::k_default_logfile_name.data()), // k_default_logfile_name is a string_view literal and always guaranteed to be null terminated so it's safe to use data() directly
+        std::shared_ptr<spdlog::async_logger> mainLogger = Helpers::makeLogger(
+            ctx.filename.value_or(test_context::k_defaultLogfileName.data()), // k_defaultLogfileName is a string_view literal and always guaranteed to be null terminated so it's safe to use data() directly
             "main",
-            logger_thread_pool,
-            ctx.log_level,
+            loggerThreadPool,
+            ctx.logLevel,
             ctx.stress ? spdlog::async_overflow_policy::overrun_oldest : spdlog::async_overflow_policy::block
         );
 
@@ -79,11 +79,11 @@ int main(int argc, char** argv)
         std::vector<std::unique_ptr<TestBase>> tests;
         tests.reserve(k_registry.size());
         // [[C++ 17 : Structured bindings]]
-        for (const auto& [test_name, create] : k_registry)
+        for (const auto& [testName, create] : k_registry)
         {
-            if (!ctx.should_run(test_name))
+            if (!ctx.shouldRun(testName))
             {
-                main_logger->info("Skipping test '{}'", test_name);
+                mainLogger->info("Skipping test '{}'", testName);
                 continue;  // factory never called — zero allocation
             }
             tests.push_back(create());
@@ -94,7 +94,7 @@ int main(int argc, char** argv)
         {
             if (ctx.filename)
             {
-                test->configure(main_logger);
+                test->configure(mainLogger);
             }
             else
             {
@@ -104,30 +104,30 @@ int main(int argc, char** argv)
 
         // Phase 3 — Start non-ignored tests.
         HAMEDSEYF_CACHE_ALIGN std::atomic<bool> stop{ false };
-        HAMEDSEYF_CACHE_ALIGN std::atomic<int> active_tests_count{ 0 };
+        HAMEDSEYF_CACHE_ALIGN std::atomic<int> activeTestsCount{ 0 };
 
-        ThreadPool test_thread_pool(ctx.max_threads);
+        ThreadPool testThreadPool(ctx.maxThreads);
 
         for (auto& test : tests)
         {
-            active_tests_count.fetch_add(1, std::memory_order_relaxed);
+            activeTestsCount.fetch_add(1, std::memory_order_relaxed);
 
-            test_thread_pool.Submit([&active_tests_count, &stop, stress = ctx.stress, test_object = test.get()]
+            testThreadPool.submit([&activeTestsCount, &stop, stress = ctx.stress, testObject = test.get()]
                 {
                     try
                     {
-                        test_object->start(stop, stress);
+                        testObject->start(stop, stress);
                     }
                     catch (const std::exception& e)
                     {
-                        fprintf(stderr, "[fatal] test '%s' threw: %s\n", test_object->name().data(), e.what()); // same as k_default_logfile_name, name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data() on the returned value
+                        fprintf(stderr, "[fatal] test '%s' threw: %s\n", testObject->name().data(), e.what()); // same as k_defaultLogfileName, name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data() on the returned value
                     }
                     catch (...)
                     {
-                        fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", test_object->name().data()); // same as k_default_logfile_name, name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data() on the returned value
+                        fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", testObject->name().data()); // same as k_defaultLogfileName, name() returns a string_view literal and always guaranteed to be null terminated so it's safe to use data() on the returned value
                     }
 
-                    active_tests_count.fetch_sub(1, std::memory_order_release);
+                    activeTestsCount.fetch_sub(1, std::memory_order_release);
                 });
         }
 
@@ -136,23 +136,23 @@ int main(int argc, char** argv)
 
         while (std::chrono::steady_clock::now() < end)
         {
-            if (active_tests_count.load(std::memory_order_acquire) == 0)
+            if (activeTestsCount.load(std::memory_order_acquire) == 0)
             {
-                main_logger->info("all tests finished early");
+                mainLogger->info("all tests finished early");
                 break;
             }
 
-            main_logger->info("heartbeat");
+            mainLogger->info("heartbeat");
 
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
         // Phase 4 — Signal stop, join all threads via threadpool, shut down logger.
         stop.store(true, std::memory_order_release);
-        test_thread_pool.Wait();
+        testThreadPool.wait();
 
         tests.clear();                    // per-test loggers and pools freed
-        logger_thread_pool.reset();       // main pool background thread joins cleanly
+        loggerThreadPool.reset();       // main pool background thread joins cleanly
 
         spdlog::shutdown();
 

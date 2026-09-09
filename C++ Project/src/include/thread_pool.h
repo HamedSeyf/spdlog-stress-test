@@ -14,29 +14,29 @@
 class ThreadPool
 {
 public:
-	explicit ThreadPool(std::optional<int> max_threads)
-		: max_threads_(max_threads)
+	explicit ThreadPool(std::optional<int> maxThreads)
+		: maxThreads_(maxThreads)
 	{
-		if (!max_threads_)
+		if (!maxThreads_)
 		{
 			return;
 		}
 
-		workers_threads_.reserve(*max_threads_);
-		for (int index = 0; index < *max_threads_; ++index)
+		workerThreads_.reserve(*maxThreads_);
+		for (int index = 0; index < *maxThreads_; ++index)
 		{
-			workers_threads_.emplace_back([this]()
+			workerThreads_.emplace_back([this]()
 				{
-					WorkerLoop();
+					workerLoop();
 				});
 		}
 	}
 
 	~ThreadPool()
 	{
-		Wait();
+		wait();
 
-		if (!max_threads_)
+		if (!maxThreads_)
 		{
 			return;
 		}
@@ -46,9 +46,9 @@ public:
 			stopping_ = true;
 		}
 
-		work_condition_.notify_all();
+		workCondition_.notify_all();
 
-		for (std::thread& worker : workers_threads_)
+		for (std::thread& worker : workerThreads_)
 		{
 			if (worker.joinable())
 			{
@@ -60,29 +60,29 @@ public:
 	ThreadPool(const ThreadPool&) = delete;
 	ThreadPool& operator=(const ThreadPool&) = delete;
 
-	void Submit(std::function<void()> task)
+	void submit(std::function<void()> task)
 	{
-		if (!max_threads_)
+		if (!maxThreads_)
 		{
-			workers_threads_.emplace_back(std::move(task));
+			workerThreads_.emplace_back(std::move(task));
 			return;
 		}
 
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 
-			const int task_id = next_task_id_++;
-			queued_tasks_.push(QueuedTask{ task_id, std::move(task) });
+			const int taskId = nextTaskId_++;
+			queuedTasks_.push(QueuedTask{ taskId, std::move(task) });
 		}
 
-		work_condition_.notify_one();
+		workCondition_.notify_one();
 	}
 
-	void Wait()
+	void wait()
 	{
-		if (!max_threads_)
+		if (!maxThreads_)
 		{
-			for (std::thread& thread : workers_threads_)
+			for (std::thread& thread : workerThreads_)
 			{
 				if (thread.joinable())
 				{
@@ -90,21 +90,21 @@ public:
 				}
 			}
 
-			workers_threads_.clear();
+			workerThreads_.clear();
 			return;
 		}
 
 		std::unique_lock<std::mutex> lock(mutex_);
 
-		done_condition_.wait(lock, [this]()
+		doneCondition_.wait(lock, [this]()
 			{
-				return queued_tasks_.empty() && in_progress_tasks_.empty();
+				return queuedTasks_.empty() && inProgressTasks_.empty();
 			});
 
-		if (first_exception_)
+		if (firstException_)
 		{
-			std::exception_ptr exception = first_exception_;
-			first_exception_ = nullptr;
+			std::exception_ptr exception = firstException_;
+			firstException_ = nullptr;
 			std::rethrow_exception(exception);
 		}
 	}
@@ -116,7 +116,7 @@ private:
 		std::function<void()> function;
 	};
 
-	void WorkerLoop()
+	void workerLoop()
 	{
 		while (true)
 		{
@@ -125,20 +125,20 @@ private:
 			{
 				std::unique_lock<std::mutex> lock(mutex_);
 
-				work_condition_.wait(lock, [this]()
+				workCondition_.wait(lock, [this]()
 					{
-						return stopping_ || !queued_tasks_.empty();
+						return stopping_ || !queuedTasks_.empty();
 					});
 
-				if (stopping_ && queued_tasks_.empty())
+				if (stopping_ && queuedTasks_.empty())
 				{
 					return;
 				}
 
-				task = std::move(queued_tasks_.front());
-				queued_tasks_.pop();
+				task = std::move(queuedTasks_.front());
+				queuedTasks_.pop();
 
-				in_progress_tasks_.insert(task.id);
+				inProgressTasks_.insert(task.id);
 			}
 
 			try
@@ -149,38 +149,38 @@ private:
 			{
 				std::lock_guard<std::mutex> lock(mutex_);
 
-				if (!first_exception_)
+				if (!firstException_)
 				{
-					first_exception_ = std::current_exception();
+					firstException_ = std::current_exception();
 				}
 			}
 
 			{
 				std::lock_guard<std::mutex> lock(mutex_);
 
-				in_progress_tasks_.erase(task.id);
+				inProgressTasks_.erase(task.id);
 
-				if (queued_tasks_.empty() && in_progress_tasks_.empty())
+				if (queuedTasks_.empty() && inProgressTasks_.empty())
 				{
-					done_condition_.notify_all();
+					doneCondition_.notify_all();
 				}
 			}
 		}
 	}
 
-	std::optional<int> max_threads_;
+	std::optional<int> maxThreads_;
 
-	std::vector<std::thread> workers_threads_;
+	std::vector<std::thread> workerThreads_;
 
 	std::mutex mutex_;
-	std::condition_variable work_condition_;
-	std::condition_variable done_condition_;
+	std::condition_variable workCondition_;
+	std::condition_variable doneCondition_;
 
-	std::queue<QueuedTask> queued_tasks_;
-	std::set<int> in_progress_tasks_;
+	std::queue<QueuedTask> queuedTasks_;
+	std::set<int> inProgressTasks_;
 
-	int next_task_id_ = 0;
+	int nextTaskId_ = 0;
 	bool stopping_ = false;
 
-	std::exception_ptr first_exception_;
+	std::exception_ptr firstException_;
 };

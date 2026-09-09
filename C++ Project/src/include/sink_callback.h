@@ -19,20 +19,20 @@ namespace sink_callback
     public:
 
         explicit ReentrantSink(std::shared_ptr<spdlog::logger> logger)
-            : sinklogger_(std::move(logger)) {}
+            : sinkLogger_(std::move(logger)) {}
 
     protected:
         void sink_it_(const spdlog::details::log_msg& msg) override
         {
-            sinklogger_->log(msg.level, "{}", msg.payload);
+            sinkLogger_->log(msg.level, "{}", msg.payload);
 
-            sinklogger_->info("sink_it_ re-entry");
+            sinkLogger_->info("sink_it_ re-entry");
         }
 
         void flush_() override {}
 
     private:
-        std::shared_ptr<spdlog::logger> sinklogger_;
+        std::shared_ptr<spdlog::logger> sinkLogger_;
     };
 } // namespace sink_callback
 

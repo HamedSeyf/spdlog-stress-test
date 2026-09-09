@@ -14,19 +14,19 @@
 
 
 template<typename Key, typename Value>
-class ExpiringCache
+class TExpiringCache
 {
 public:
-	ExpiringCache();
-	~ExpiringCache();
+	TExpiringCache();
+	~TExpiringCache();
 
-	void Put(const Key& key, Value value, std::chrono::milliseconds ttl);
-	// For this exercise, we return an optional<Value> even though it copies the stored Value object and hence could result in performance drops with hot Get() calls. Alternatives being shared_ptr<const Value> & bool TryGet(key, out)
-	std::optional<Value> Get(const Key& key) const;
-	bool Remove(const Key& key);
+	void put(const Key& key, Value value, std::chrono::milliseconds ttl);
+	// For this exercise, we return an optional<Value> even though it copies the stored Value object and hence could result in performance drops with hot get() calls. Alternatives being shared_ptr<const Value> & bool tryGet(key, out)
+	std::optional<Value> get(const Key& key) const;
+	bool remove(const Key& key);
 	// Returns physical map size, not valid - live - entry count
-	size_t Size() const;
-	void Stop();
+	size_t size() const;
+	void stop();
 
 private:
 
@@ -54,50 +54,50 @@ private:
 		}
 	};
 
-	uint64_t CurrentGeneration = 0;
-	std::unordered_map<Key, MapEntry> LookupMap;
-	std::priority_queue<HeapEntry, std::vector<HeapEntry>, ExpirationCompare> ExpirationQueue;
+	uint64_t currentGeneration_ = 0;
+	std::unordered_map<Key, MapEntry> lookupMap_;
+	std::priority_queue<HeapEntry, std::vector<HeapEntry>, ExpirationCompare> expirationQueue_;
 
-	mutable std::shared_mutex DataMutex;
-	// Intentionally embracing the extra overhead of std::condition_variable_any over std::condition_variable in order to be able to leverage std::shared_mutex for potentially extreme read calls (Get(), Size() etc.)
-	std::condition_variable_any ExpirationQueueCV;
-	bool bIsStopping = false;
+	mutable std::shared_mutex dataMutex_;
+	// Intentionally embracing the extra overhead of std::condition_variable_any over std::condition_variable in order to be able to leverage std::shared_mutex for potentially extreme read calls (get(), size() etc.)
+	std::condition_variable_any expirationQueueCv_;
+	bool isStopping_ = false;
 
-	std::thread ExpirationHandlerThread;
+	std::thread expirationHandlerThread_;
 };
 
 
 template<typename Key, typename Value>
-ExpiringCache<Key, Value>::ExpiringCache()
+TExpiringCache<Key, Value>::TExpiringCache()
 {
-	ExpirationHandlerThread = std::thread([this]()
+	expirationHandlerThread_ = std::thread([this]()
 		{
-			std::unique_lock<std::shared_mutex> Lock(DataMutex);
+			std::unique_lock<std::shared_mutex> lock(dataMutex_);
 
 			while (true)
 			{
-				std::chrono::steady_clock::time_point TimeToWaitUntil;
+				std::chrono::steady_clock::time_point timeToWaitUntil;
 
-				TimeToWaitUntil = ExpirationQueue.empty() ? std::chrono::steady_clock::time_point::max() : ExpirationQueue.top().expiration;
+				timeToWaitUntil = expirationQueue_.empty() ? std::chrono::steady_clock::time_point::max() : expirationQueue_.top().expiration;
 
-				ExpirationQueueCV.wait_until(Lock, TimeToWaitUntil, [this]
+				expirationQueueCv_.wait_until(lock, timeToWaitUntil, [this]
 					{
-						return bIsStopping || (!ExpirationQueue.empty() && ExpirationQueue.top().expiration <= std::chrono::steady_clock::now());
+						return isStopping_ || (!expirationQueue_.empty() && expirationQueue_.top().expiration <= std::chrono::steady_clock::now());
 					});
 
-				if (bIsStopping)
+				if (isStopping_)
 				{
 					break;
 				}
 
 				const auto now = std::chrono::steady_clock::now();
-				while (!ExpirationQueue.empty() && ExpirationQueue.top().expiration <= now)
+				while (!expirationQueue_.empty() && expirationQueue_.top().expiration <= now)
 				{
-					const HeapEntry ExpiredData = ExpirationQueue.top();
-					ExpirationQueue.pop();
-					if (auto FoundElement = LookupMap.find(ExpiredData.key); FoundElement != LookupMap.end() && FoundElement->second.generation == ExpiredData.generation)
+					const HeapEntry expiredData = expirationQueue_.top();
+					expirationQueue_.pop();
+					if (auto foundElement = lookupMap_.find(expiredData.key); foundElement != lookupMap_.end() && foundElement->second.generation == expiredData.generation)
 					{
-						LookupMap.erase(FoundElement);
+						lookupMap_.erase(foundElement);
 					}
 				}
 			}
@@ -105,105 +105,105 @@ ExpiringCache<Key, Value>::ExpiringCache()
 }
 
 template<typename Key, typename Value>
-ExpiringCache<Key, Value>::~ExpiringCache()
+TExpiringCache<Key, Value>::~TExpiringCache()
 {
-	Stop();
+	stop();
 }
 
 template<typename Key, typename Value>
-void ExpiringCache<Key, Value>::Put(const Key& key, Value value, std::chrono::milliseconds ttl)
+void TExpiringCache<Key, Value>::put(const Key& key, Value value, std::chrono::milliseconds ttl)
 {
-	std::unique_lock<std::shared_mutex> Lock(DataMutex);
+	std::unique_lock<std::shared_mutex> lock(dataMutex_);
 
-	if (bIsStopping)
+	if (isStopping_)
 	{
 		return;
 	}
 
-	auto LookupElement = LookupMap.insert_or_assign(
+	auto lookupElement = lookupMap_.insert_or_assign(
 		key,
-		MapEntry{ ExpirationMetadata { std::chrono::steady_clock::now() + ttl, ++CurrentGeneration }, std::move(value) }
+		MapEntry{ ExpirationMetadata { std::chrono::steady_clock::now() + ttl, ++currentGeneration_ }, std::move(value) }
 	);
 
-	ExpirationQueue.push(HeapEntry{ ExpirationMetadata { LookupElement.first->second.expiration, LookupElement.first->second.generation }, key });
+	expirationQueue_.push(HeapEntry{ ExpirationMetadata { lookupElement.first->second.expiration, lookupElement.first->second.generation }, key });
 
-	if (ExpirationQueue.top().key == key)
+	if (expirationQueue_.top().key == key)
 	{
-		ExpirationQueueCV.notify_one();
+		expirationQueueCv_.notify_one();
 	}
 }
 
 template<typename Key, typename Value>
-std::optional<Value> ExpiringCache<Key, Value>::Get(const Key& key) const
+std::optional<Value> TExpiringCache<Key, Value>::get(const Key& key) const
 {
-	std::shared_lock<std::shared_mutex> Lock(DataMutex);
+	std::shared_lock<std::shared_mutex> lock(dataMutex_);
 
-	if (bIsStopping)
+	if (isStopping_)
 	{
 		return std::nullopt;
 	}
 
-	const auto FoundElement = LookupMap.find(key);
+	const auto foundElement = lookupMap_.find(key);
 
-	if (FoundElement == LookupMap.end())
+	if (foundElement == lookupMap_.end())
 	{
 		return std::nullopt;
 	}
 
-	if (FoundElement->second.expiration <= std::chrono::steady_clock::now())
+	if (foundElement->second.expiration <= std::chrono::steady_clock::now())
 	{
 		return std::nullopt;
 	}
 
-	return std::optional<Value>(FoundElement->second.value);
+	return std::optional<Value>(foundElement->second.value);
 }
 
 template<typename Key, typename Value>
-bool ExpiringCache<Key, Value>::Remove(const Key& key)
+bool TExpiringCache<Key, Value>::remove(const Key& key)
 {
-	std::unique_lock<std::shared_mutex> Lock(DataMutex);
+	std::unique_lock<std::shared_mutex> lock(dataMutex_);
 
-	if (bIsStopping)
+	if (isStopping_)
 	{
 		return false;
 	}
 
-	size_t removedCount = LookupMap.erase(key);
+	size_t removedCount = lookupMap_.erase(key);
 
-	if (!ExpirationQueue.empty() && ExpirationQueue.top().key == key)
+	if (!expirationQueue_.empty() && expirationQueue_.top().key == key)
 	{
-		ExpirationQueueCV.notify_one();
+		expirationQueueCv_.notify_one();
 	}
 
 	return (removedCount > 0);
 }
 
 template<typename Key, typename Value>
-size_t ExpiringCache<Key, Value>::Size() const
+size_t TExpiringCache<Key, Value>::size() const
 {
-	std::shared_lock<std::shared_mutex> Lock(DataMutex);
+	std::shared_lock<std::shared_mutex> lock(dataMutex_);
 
-	if (bIsStopping)
+	if (isStopping_)
 	{
 		return 0;
 	}
 
-	return LookupMap.size();
+	return lookupMap_.size();
 }
 
 template<typename Key, typename Value>
-void ExpiringCache<Key, Value>::Stop()
+void TExpiringCache<Key, Value>::stop()
 {
 	{
-		std::unique_lock<std::shared_mutex> lock(DataMutex);
+		std::unique_lock<std::shared_mutex> lock(dataMutex_);
 
-		bIsStopping = true;
+		isStopping_ = true;
 	}
 
-	ExpirationQueueCV.notify_all();
+	expirationQueueCv_.notify_all();
 
-	if (ExpirationHandlerThread.joinable())
+	if (expirationHandlerThread_.joinable())
 	{
-		ExpirationHandlerThread.join();
+		expirationHandlerThread_.join();
 	}
 }

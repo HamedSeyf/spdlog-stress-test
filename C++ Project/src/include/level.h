@@ -47,14 +47,14 @@ protected:
     void run(const std::atomic<bool>& stop, bool stress) override
     {
         // Extract raw observer pointer once — stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
-        spdlog::logger* const logger_ptr = logger_.get();
+        spdlog::logger* const loggerPtr = logger_.get();
 
         // For reusability in case run is expected to be called multiple times
         level::g_level.store(0, std::memory_order_relaxed);
 
         // I have intentionally left the logic here untouched so there are two separate threads created and run inside this run to demonstrate potentials of this run function.
         // This would result in "odd" and "even" logs not being consistent with each other as write and read are done in two separate threads.
-        std::thread write_thread([&stop, stress]
+        std::thread writeThread([&stop, stress]
             {
                 while (!stop.load(std::memory_order_acquire))
                 {
@@ -64,10 +64,10 @@ protected:
                 }
             });
 
-        std::thread read_thread;
+        std::thread readThread;
         try
         {
-            read_thread = std::thread([&stop, stress, logger_ptr]
+            readThread = std::thread([&stop, stress, loggerPtr]
                 {
                     while (!stop.load(std::memory_order_acquire))
                     {
@@ -75,11 +75,11 @@ protected:
 
                         if (level & 1)
                         {
-                            logger_ptr->info("odd");
+                            loggerPtr->info("odd");
                         }
                         else
                         {
-                            logger_ptr->info("even");
+                            loggerPtr->info("even");
                         }
 
                         HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 1);
@@ -88,12 +88,12 @@ protected:
         }
         catch (...)
         {
-            // r failed to start — join write_thread before propagating
-            write_thread.join();
+            // r failed to start — join writeThread before propagating
+            writeThread.join();
             throw;
         }
 
-        write_thread.join();
-        read_thread.join();
+        writeThread.join();
+        readThread.join();
     }
 };

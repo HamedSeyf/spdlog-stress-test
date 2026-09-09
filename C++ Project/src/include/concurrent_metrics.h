@@ -25,41 +25,41 @@ namespace concurrent_metrics
 {
     struct Event
     {
-        unsigned processed_count = 0;
-        unsigned failed_count = 0;
-        double average_latency_us = 0;
+        unsigned processedCount = 0;
+        unsigned failedCount = 0;
+        double averageLatencyUs = 0;
         // Preferred over std::string to avoid heap/copy
-        std::array<char, 128> last_error_message {};
+        std::array<char, 128> lastErrorMessage {};
 
-        static Event CreateRandom()
+        static Event createRandom()
         {
             thread_local std::mt19937 generator(std::random_device{}());
 
-            std::uniform_int_distribution<unsigned> processed_distribution(50, 500);
-            std::uniform_int_distribution<unsigned> failed_distribution(0, 10);
-            std::uniform_real_distribution<double> latency_distribution(100.0, 5000.0);
+            std::uniform_int_distribution<unsigned> processedDistribution(50, 500);
+            std::uniform_int_distribution<unsigned> failedDistribution(0, 10);
+            std::uniform_real_distribution<double> latencyDistribution(100.0, 5000.0);
 
-            std::bernoulli_distribution error_distribution(0.2);
-            std::uniform_int_distribution<unsigned> error_id_distribution(1000, 9999);
+            std::bernoulli_distribution errorDistribution(0.2);
+            std::uniform_int_distribution<unsigned> errorIdDistribution(1000, 9999);
 
             Event result;
 
-            result.processed_count = processed_distribution(generator);
-            result.failed_count = failed_distribution(generator);
-            result.average_latency_us = latency_distribution(generator);
+            result.processedCount = processedDistribution(generator);
+            result.failedCount = failedDistribution(generator);
+            result.averageLatencyUs = latencyDistribution(generator);
 
-            if (error_distribution(generator))
+            if (errorDistribution(generator))
             {
                 std::snprintf(
-                    result.last_error_message.data(),
-                    result.last_error_message.size(),
+                    result.lastErrorMessage.data(),
+                    result.lastErrorMessage.size(),
                     "Random worker processing failure #%u",
-                    error_id_distribution(generator));
+                    errorIdDistribution(generator));
             }
 
             return result;
         }
-        static std::optional<Event> Consolidate(const std::vector<Event>& events)
+        static std::optional<Event> consolidate(const std::vector<Event>& events)
         {
             if (events.empty())
             {
@@ -68,31 +68,31 @@ namespace concurrent_metrics
 
             std::optional<Event> result(std::in_place);
 
-            for (const Event& current_event : events)
+            for (const Event& currentEvent : events)
             {
-                result->EnvelopeWith(current_event);
+                result->envelopeWith(currentEvent);
             }
 
             return result;
         }
-        void EnvelopeWith(const Event& event)
+        void envelopeWith(const Event& event)
         {
-            const unsigned previous_processed_count = processed_count;
-            const unsigned incoming_processed_count = event.processed_count;
-            const unsigned combined_processed_count = previous_processed_count + incoming_processed_count;
+            const unsigned previousProcessedCount = processedCount;
+            const unsigned incomingProcessedCount = event.processedCount;
+            const unsigned combinedProcessedCount = previousProcessedCount + incomingProcessedCount;
 
-            if (combined_processed_count > 0)
+            if (combinedProcessedCount > 0)
             {
-                average_latency_us = 
-                    ((average_latency_us * previous_processed_count) + (event.average_latency_us * incoming_processed_count)) / combined_processed_count;
+                averageLatencyUs =
+                    ((averageLatencyUs * previousProcessedCount) + (event.averageLatencyUs * incomingProcessedCount)) / combinedProcessedCount;
             }
 
-            processed_count += event.processed_count;
-            failed_count += event.failed_count;
+            processedCount += event.processedCount;
+            failedCount += event.failedCount;
 
-            if (event.last_error_message[0] != '\0')
+            if (event.lastErrorMessage[0] != '\0')
             {
-                last_error_message = event.last_error_message;
+                lastErrorMessage = event.lastErrorMessage;
             }
         }
     };
@@ -111,90 +111,90 @@ public:
 protected:
     void run(const std::atomic<bool>& stop, bool stress) override
     {
-        internal_stop_.store(true, std::memory_order_release);
-        Wait();
-        internal_stop_.store(false, std::memory_order_release);
-        worker_threads_.clear();
-        shared_data_.reset();
+        internalStop_.store(true, std::memory_order_release);
+        wait();
+        internalStop_.store(false, std::memory_order_release);
+        workerThreads_.clear();
+        sharedData_.reset();
 
         // Extract raw observer pointer once � stays in register for entire loop - lifetime guaranteed: logger_ outlives run() by design
-        spdlog::logger* const logger_ptr = logger_.get();
+        spdlog::logger* const loggerPtr = logger_.get();
 
-        constexpr unsigned workers_count = 3; // Whats the best naming convention for such consts and is this the best spot to put these file scoped constexpr?
-        constexpr unsigned event_batch_size = 64;
-        constexpr unsigned reporter_nonstress_sleep_duration_ms = 100;
+        constexpr unsigned workersCount = 3; // Whats the best naming convention for such consts and is this the best spot to put these file scoped constexpr?
+        constexpr unsigned eventBatchSize = 64;
+        constexpr unsigned reporterNonstressSleepDurationMs = 100;
 
-        worker_threads_.reserve(workers_count);
+        workerThreads_.reserve(workersCount);
 
         // First creating worker threads
-        for (unsigned worker_id = 0; worker_id < workers_count; ++worker_id)
+        for (unsigned workerId = 0; workerId < workersCount; ++workerId)
         {
             try
             {
-                worker_threads_.emplace_back([&stop, stress, name = name(), & internal_stop = internal_stop_, &shared_data_mutex = shared_data_mutex_, &shared_data = shared_data_]()
+                workerThreads_.emplace_back([&stop, stress, name = name(), & internalStop = internalStop_, &sharedDataMutex = sharedDataMutex_, &sharedData = sharedData_]()
                     {
                         try
                         {
-                            std::vector<concurrent_metrics::Event> unreported_events;
-                            unreported_events.reserve(event_batch_size);
+                            std::vector<concurrent_metrics::Event> unreportedEvents;
+                            unreportedEvents.reserve(eventBatchSize);
 
-                            auto flush_lambda = [&unreported_events, &shared_data_mutex, &shared_data]()
+                            auto flushLambda = [&unreportedEvents, &sharedDataMutex, &sharedData]()
                                 {
-                                    std::optional<concurrent_metrics::Event> consolidated_event = concurrent_metrics::Event::Consolidate(unreported_events);
-                                    unreported_events.clear();
+                                    std::optional<concurrent_metrics::Event> consolidatedEvent = concurrent_metrics::Event::consolidate(unreportedEvents);
+                                    unreportedEvents.clear();
 
                                     // Dumping all the batched events data into the common data pool
-                                    if (consolidated_event.has_value())
+                                    if (consolidatedEvent.has_value())
                                     {
-                                        std::lock_guard<std::mutex> data_lock(shared_data_mutex);
-                                        if (!shared_data.has_value())
+                                        std::lock_guard<std::mutex> dataLock(sharedDataMutex);
+                                        if (!sharedData.has_value())
                                         {
-                                            shared_data.emplace(*consolidated_event);
+                                            sharedData.emplace(*consolidatedEvent);
                                         }
                                         else
                                         {
-                                            shared_data->EnvelopeWith(*consolidated_event);
+                                            sharedData->envelopeWith(*consolidatedEvent);
                                         }
                                     }
                                 };
 
-                            while (!stop.load(std::memory_order_acquire) && !internal_stop.load(std::memory_order_acquire))
+                            while (!stop.load(std::memory_order_acquire) && !internalStop.load(std::memory_order_acquire))
                             {
                                 // Randomly creating and saving an event
-                                unreported_events.emplace_back(concurrent_metrics::Event::CreateRandom());
+                                unreportedEvents.emplace_back(concurrent_metrics::Event::createRandom());
 
-                                if (unreported_events.size() >= event_batch_size)
+                                if (unreportedEvents.size() >= eventBatchSize)
                                 {
-                                    flush_lambda();
+                                    flushLambda();
                                 }
 
                                 HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, 100);
                             }
 
-                            flush_lambda();
+                            flushLambda();
                         }
                         catch (const std::exception& e)
                         {
                             fprintf(stderr, "[fatal] test '%s' threw: %s\n", name.data(), e.what());
-                            internal_stop.store(true, std::memory_order_release);
+                            internalStop.store(true, std::memory_order_release);
                         }
                         catch (...)
                         {
                             fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", name.data());
-                            internal_stop.store(true, std::memory_order_release);
+                            internalStop.store(true, std::memory_order_release);
                         }
                     });
             }
             catch (const std::exception& e)
             {
                 fprintf(stderr, "[fatal] test '%s' threw: %s\n", name().data(), e.what());
-                internal_stop_.store(true, std::memory_order_release);
+                internalStop_.store(true, std::memory_order_release);
                 break;
             }
             catch (...)
             {
                 fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", name().data());
-                internal_stop_.store(true, std::memory_order_release);
+                internalStop_.store(true, std::memory_order_release);
                 break;
             }
         }
@@ -202,101 +202,101 @@ protected:
         // And now creating the reporter thread
         try
         {
-            reporter_thread_ = std::thread([&stop, stress, name = name(), &internal_stop = internal_stop_, &shared_data_mutex = shared_data_mutex_, &shared_data = shared_data_, logger_ptr]()
+            reporterThread_ = std::thread([&stop, stress, name = name(), &internalStop = internalStop_, &sharedDataMutex = sharedDataMutex_, &sharedData = sharedData_, loggerPtr]()
                 {
                     try
                     {
-                        auto report_lambda = [&shared_data, &shared_data_mutex, logger_ptr]()
+                        auto reportLambda = [&sharedData, &sharedDataMutex, loggerPtr]()
                             {
-                                std::optional<concurrent_metrics::Event> shared_data_copy;
+                                std::optional<concurrent_metrics::Event> sharedDataCopy;
 
                                 {
-                                    std::lock_guard<std::mutex> data_lock(shared_data_mutex);
-                                    shared_data_copy = shared_data;
+                                    std::lock_guard<std::mutex> dataLock(sharedDataMutex);
+                                    sharedDataCopy = sharedData;
                                 }
 
-                                if (shared_data_copy.has_value())
+                                if (sharedDataCopy.has_value())
                                 {
-                                    logger_ptr->info("processed_count={} failed_count={} average_latency_us={} last_error_message={}",
-                                        shared_data_copy->processed_count,
-                                        shared_data_copy->failed_count,
-                                        shared_data_copy->average_latency_us,
-                                        shared_data_copy->last_error_message.data());
+                                    loggerPtr->info("processed_count={} failed_count={} average_latency_us={} last_error_message={}",
+                                        sharedDataCopy->processedCount,
+                                        sharedDataCopy->failedCount,
+                                        sharedDataCopy->averageLatencyUs,
+                                        sharedDataCopy->lastErrorMessage.data());
                                 }
                                 else
                                 {
-                                    logger_ptr->info("No metrics produced yet.");
+                                    loggerPtr->info("No metrics produced yet.");
                                 }
                             };
 
-                        while (!stop.load(std::memory_order_acquire) && !internal_stop.load(std::memory_order_acquire))
+                        while (!stop.load(std::memory_order_acquire) && !internalStop.load(std::memory_order_acquire))
                         {
-                            report_lambda();
+                            reportLambda();
 
-                            HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, reporter_nonstress_sleep_duration_ms);
+                            HAMEDSEYF_SPIN_OR_SLEEP_MS(stress, reporterNonstressSleepDurationMs);
                         }
 
-                        report_lambda();
+                        reportLambda();
                     }
                     catch (const std::exception& e)
                     {
                         fprintf(stderr, "[fatal] test '%s' threw: %s\n", name.data(), e.what());
-                        internal_stop.store(true, std::memory_order_release);
+                        internalStop.store(true, std::memory_order_release);
                     }
                     catch (...)
                     {
                         fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", name.data());
-                        internal_stop.store(true, std::memory_order_release);
+                        internalStop.store(true, std::memory_order_release);
                     }
                 });
         }
         catch (const std::exception& e)
         {
             fprintf(stderr, "[fatal] test '%s' threw: %s\n", name().data(), e.what());
-            internal_stop_.store(true, std::memory_order_release);
+            internalStop_.store(true, std::memory_order_release);
         }
         catch (...)
         {
             fprintf(stderr, "[fatal] test '%s' threw unknown exception\n", name().data());
-            internal_stop_.store(true, std::memory_order_release);
+            internalStop_.store(true, std::memory_order_release);
         }
 
-        Wait();
+        wait();
 
-        if (internal_stop_.load(std::memory_order_acquire))
+        if (internalStop_.load(std::memory_order_acquire))
         {
             throw std::runtime_error("[fatal] Early exiting due to internal exception(s).");
         }
     }
 
 private:
-    std::vector<std::thread> worker_threads_;
-    std::thread reporter_thread_;
+    std::vector<std::thread> workerThreads_;
+    std::thread reporterThread_;
 
-    std::mutex shared_data_mutex_;
-    std::optional<concurrent_metrics::Event> shared_data_;
+    std::mutex sharedDataMutex_;
+    std::optional<concurrent_metrics::Event> sharedData_;
 
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4324) // structure padded due to alignas — expected for cache-line alignment
 #endif
-    HAMEDSEYF_CACHE_ALIGN std::atomic<bool> internal_stop_ { false };
+    HAMEDSEYF_CACHE_ALIGN std::atomic<bool> internalStop_ { false };
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
-    void Wait()
+    void wait()
     {
-        std::vector<std::thread> local_threads;
+        std::vector<std::thread> localThreads;
 
-        local_threads.swap(worker_threads_);
-        local_threads.push_back(std::move(reporter_thread_));
+        localThreads.swap(workerThreads_);
+        localThreads.push_back(std::move(reporterThread_));
 
-        for (std::thread& current_thread : local_threads)
+        for (std::thread& currentThread : localThreads)
         {
-            if (current_thread.joinable())
+            if (currentThread.joinable())
             {
-                current_thread.join();
+                currentThread.join();
             }
         }
     }

@@ -12,7 +12,7 @@
 
 namespace test_context
 {
-    static constexpr std::string_view k_default_logfile_name = "output.log";
+    static constexpr std::string_view k_defaultLogfileName = "output.log";
 }
 
 // ============================================================
@@ -34,17 +34,17 @@ struct TestContext
 {
     int                                 seconds     = 5;
     bool                                stress      = false;
-    spdlog::level::level_enum           log_level   = spdlog::level::level_enum::info;
-    size_t                              queue_size  = 8192;  // async logger queue capacity in messages
+    spdlog::level::level_enum           logLevel    = spdlog::level::level_enum::info;
+    size_t                              queueSize   = 8192;  // async logger queue capacity in messages
     // [[C++ 17 : std::optional]]
     std::optional<std::string>          filename    = std::nullopt;         // std::nullopt = no global file logger between tests (main log still goes into "output.log")
-    std::optional<int>                  max_threads = std::nullopt;
-    std::unordered_set<std::string>     ignore_tests;     // empty = run all
+    std::optional<int>                  maxThreads  = std::nullopt;
+    std::unordered_set<std::string>     ignoreTests;     // empty = run all
 
     // Returns true if the named test should be included in current run
-    bool should_run(std::string_view test_name) const
+    bool shouldRun(std::string_view testName) const
     {
-        return ignore_tests.find(std::string(test_name)) == ignore_tests.end();
+        return ignoreTests.find(std::string(testName)) == ignoreTests.end();
     }
 
     static TestContext parse(int argc, char** argv)
@@ -87,7 +87,7 @@ struct TestContext
                 }
                 else
                 {
-                    ctx.log_level = level;
+                    ctx.logLevel = level;
                 }
             }
 
@@ -99,12 +99,12 @@ struct TestContext
                 if (const long val = std::strtol(argv[++i], &end, 10);
                     end != argv[i] && val > 0)
                 {
-                    ctx.queue_size = static_cast<size_t>(val);
+                    ctx.queueSize = static_cast<size_t>(val);
                 }
                 else
                 {
                     fprintf(stderr, "[args] invalid --queuesize value '%s', using default %zu\n",
-                        argv[i], ctx.queue_size);
+                        argv[i], ctx.queueSize);
                 }
             }
 
@@ -122,7 +122,7 @@ struct TestContext
                 if (const long val = std::strtol(argv[++i], &end, 10);
                     end != argv[i] && val > 0 && val <= INT_MAX)
                 {
-                    ctx.max_threads = static_cast<int>(val);
+                    ctx.maxThreads = static_cast<int>(val);
                 }
                 else
                 {
@@ -139,7 +139,7 @@ struct TestContext
                 {
                     if (!token.empty())
                     {
-                        ctx.ignore_tests.insert(token);
+                        ctx.ignoreTests.insert(token);
                     }
                 }
             }

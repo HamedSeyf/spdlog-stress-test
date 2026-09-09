@@ -17,11 +17,11 @@ namespace Helpers
 {
 
     // Helper function. It would be better to have a utils file but for sakes of this test and keeping changes to the minimum we are adding this 1 file here
-    inline std::shared_ptr<spdlog::async_logger> make_logger(std::string_view filename, std::string_view logger_name, const std::shared_ptr<spdlog::details::thread_pool>& thread_pool, spdlog::level::level_enum log_level, spdlog::async_overflow_policy overflow_policy)
+    inline std::shared_ptr<spdlog::async_logger> makeLogger(std::string_view filename, std::string_view loggerName, const std::shared_ptr<spdlog::details::thread_pool>& threadPool, spdlog::level::level_enum logLevel, spdlog::async_overflow_policy overflowPolicy)
     {
-        const std::filesystem::path log_path(filename);
+        const std::filesystem::path logPath(filename);
 
-        if (const auto parent = log_path.parent_path(); !parent.empty())
+        if (const auto parent = logPath.parent_path(); !parent.empty())
         {
             std::error_code ec;
             std::filesystem::create_directories(parent, ec);   // non-throwing; ec checked below
@@ -46,12 +46,12 @@ namespace Helpers
         sink->set_pattern("[%H:%M:%S.%e] [%n] [%l] %v");
 
         auto logger = std::make_shared<spdlog::async_logger>(
-            std::string(logger_name),
+            std::string(loggerName),
             spdlog::sinks_init_list{ sink },
-            thread_pool,
-            overflow_policy);
+            threadPool,
+            overflowPolicy);
 
-        logger->set_level(log_level);
+        logger->set_level(logLevel);
 
         return logger;
     }
@@ -116,16 +116,16 @@ public:
                     // When this test should have its own dedicated logger, pool and file output
                     try
                     {
-                        logger_thread_pool = std::make_shared<spdlog::details::thread_pool>(
-                            cfg.queue_size,
+                        loggerThreadPool_ = std::make_shared<spdlog::details::thread_pool>(
+                            cfg.queueSize,
                             1
                         );
 
-                        logger_ = Helpers::make_logger(
+                        logger_ = Helpers::makeLogger(
                             std::string(name()) + ".log",
                             name(),
-                            logger_thread_pool,
-                            cfg.log_level,
+                            loggerThreadPool_,
+                            cfg.logLevel,
                             cfg.stress ? spdlog::async_overflow_policy::overrun_oldest : spdlog::async_overflow_policy::block
                         );
                     }
@@ -164,5 +164,5 @@ protected:
 
 private:
     // This thread pool is valid only when test is configured via configure_with_context; i.e. only when this test case has created and owns its own logger and threadpool
-    std::shared_ptr<spdlog::details::thread_pool> logger_thread_pool;
+    std::shared_ptr<spdlog::details::thread_pool> loggerThreadPool_;
 };

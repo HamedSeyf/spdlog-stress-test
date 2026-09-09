@@ -35,8 +35,8 @@ enum class RideState
 // ============================================================
 struct NotificationData
 {
-	RideState PreviousState;
-	RideState CurrentState;
+	RideState previousState;
+	RideState currentState;
 };
 
 
@@ -48,7 +48,7 @@ class IRideStateObserver
 public:
 	virtual ~IRideStateObserver() = default;
 
-	virtual void OnRideStateChanged(RideState OldState, RideState NewState) = 0;
+	virtual void onRideStateChanged(RideState oldState, RideState newState) = 0;
 };
 
 
@@ -60,7 +60,7 @@ class IObserverDispatcher
 public:
 	virtual ~IObserverDispatcher() = default;
 
-	virtual void Dispatch(std::shared_ptr<IRideStateObserver> Observer, const NotificationData& Data) = 0;
+	virtual void dispatch(std::shared_ptr<IRideStateObserver> observer, const NotificationData& data) = 0;
 };
 
 
@@ -69,8 +69,8 @@ public:
 // ============================================================
 struct ObserverData
 {
-	std::weak_ptr<IObserverDispatcher> Dispatcher;
-	std::weak_ptr<IRideStateObserver> Observer;
+	std::weak_ptr<IObserverDispatcher> dispatcher;
+	std::weak_ptr<IRideStateObserver> observer;
 };
 
 
@@ -87,70 +87,70 @@ public:
 
 	virtual void run(const std::atomic<bool>& stop, [[maybe_unused]] bool stress) override
 	{
-		ObserverThread = std::thread([this, &stop]()
+		observerThread_ = std::thread([this, &stop]()
 			{
-				NotificationData FrontNotificationData;
+				NotificationData frontNotificationData;
 
 				while (!stop.load(std::memory_order_acquire))
 				{
-					std::unique_lock<std::mutex> NotificationsLock(NotificationsMutex);
+					std::unique_lock<std::mutex> notificationsLock(notificationsMutex_);
 
-					NotificationQueueCV.wait(NotificationsLock,[&bShuttingDown = bShuttingDown, &NotificationsQueue = NotificationsQueue]()
+					notificationQueueCv_.wait(notificationsLock,[&isShuttingDown = isShuttingDown_, &notificationsQueue = notificationsQueue_]()
 						{
-							return (bShuttingDown || !NotificationsQueue.empty());
+							return (isShuttingDown || !notificationsQueue.empty());
 						});
 
-					if (bShuttingDown && NotificationsQueue.empty())
+					if (isShuttingDown_ && notificationsQueue_.empty())
 					{
 						return;
 					}
 
-					if (NotificationsQueue.empty())
+					if (notificationsQueue_.empty())
 					{
 						continue;
 					}
 
-					FrontNotificationData = std::move(NotificationsQueue.front());
-					NotificationsQueue.pop();
+					frontNotificationData = std::move(notificationsQueue_.front());
+					notificationsQueue_.pop();
 
-					NotificationsLock.unlock();
+					notificationsLock.unlock();
 
 					using HealthyObserversPairType = std::pair<std::shared_ptr<IObserverDispatcher>, std::shared_ptr<IRideStateObserver>>;
 
-					std::vector<HealthyObserversPairType> HealthyObservers;
+					std::vector<HealthyObserversPairType> healthyObservers;
 
 					{
 						// In this scope, the expired weak pointers are cleaned up and a copy style vector of the healthy shared_ptr gets created for the callback (next step)
-						std::lock_guard<std::mutex> ObserversLock(ObserversMutex);
+						std::lock_guard<std::mutex> observersLock(observersMutex_);
 
-						HealthyObservers.reserve(Observers.size());
+						healthyObservers.reserve(observers_.size());
 
-						for (auto Iter = Observers.begin(); Iter != Observers.end();)
+						for (auto iter = observers_.begin(); iter != observers_.end();)
 						{
-							std::shared_ptr<IObserverDispatcher> Dispatcher = Iter->Dispatcher.lock();
-							std::shared_ptr<IRideStateObserver> Observer = Iter->Observer.lock();
+							std::shared_ptr<IObserverDispatcher> dispatcher = iter->dispatcher.lock();
+							std::shared_ptr<IRideStateObserver> observer = iter->observer.lock();
 
-							if (Dispatcher && Observer)
+							if (dispatcher && observer)
 							{
-								HealthyObservers.push_back({ Dispatcher, Observer });
-								++Iter;
+								healthyObservers.push_back({ dispatcher, observer });
+								++iter;
 							}
 							else
 							{
-								Iter = Observers.erase(Iter);
+								iter = observers_.erase(iter);
 							}
 						}
 					}
 
-					for (const HealthyObserversPairType& CurrentObserverData : HealthyObservers)
+					for (const HealthyObserversPairType& currentObserverData : healthyObservers)
 					{
 						try
 						{
-							CurrentObserverData.first->Dispatch(CurrentObserverData.second, FrontNotificationData);
+							currentObserverData.first->dispatch(currentObserverData.second, frontNotificationData);
 						}
-						catch (const std::exception& Exception)
+						catch (const std::exception& exception)
 						{
-							std::fprintf(stderr, "Observer callback threw exception : %s\n", Exception.what());
+							std::fprintf(stderr, "Observer callback threw exception : %s\n", exception.what());
 						}
 						catch (...)
 						{
@@ -164,92 +164,92 @@ public:
 	virtual ~RideStateManager()
 	{
 		{
-			std::lock_guard<std::mutex> Lock(NotificationsMutex);
-			bShuttingDown = true;
+			std::lock_guard<std::mutex> lock(notificationsMutex_);
+			isShuttingDown_ = true;
 		}
 
-		NotificationQueueCV.notify_one();
+		notificationQueueCv_.notify_one();
 
-		if (ObserverThread.joinable())
+		if (observerThread_.joinable())
 		{
-			ObserverThread.join();
+			observerThread_.join();
 		}
 	}
 
-	bool Subscribe(const std::shared_ptr<IObserverDispatcher>& Dispatcher, const std::shared_ptr<IRideStateObserver>&  Observer)
+	bool subscribe(const std::shared_ptr<IObserverDispatcher>& dispatcher, const std::shared_ptr<IRideStateObserver>&  observer)
 	{
-		if (!Dispatcher || !Observer)
+		if (!dispatcher || !observer)
 		{
 			return false;
 		}
 
 		{
-			std::scoped_lock Lock(ObserversMutex, NotificationsMutex);
+			std::scoped_lock lock(observersMutex_, notificationsMutex_);
 
-			if (bShuttingDown)
+			if (isShuttingDown_)
 			{
 				return false;
 			}
 
-			for (auto Iter = Observers.begin(); Iter != Observers.end();)
+			for (auto iter = observers_.begin(); iter != observers_.end();)
 			{
-				std::shared_ptr<IObserverDispatcher> CurrentDispatcher = Iter->Dispatcher.lock();
-				std::shared_ptr<IRideStateObserver> CurrentObserver = Iter->Observer.lock();
+				std::shared_ptr<IObserverDispatcher> currentDispatcher = iter->dispatcher.lock();
+				std::shared_ptr<IRideStateObserver> currentObserver = iter->observer.lock();
 
-				if (CurrentDispatcher && CurrentObserver)
+				if (currentDispatcher && currentObserver)
 				{
-					if (CurrentDispatcher == Dispatcher && CurrentObserver == Observer)
+					if (currentDispatcher == dispatcher && currentObserver == observer)
 					{
 						return false;
 					}
 					else
 					{
-						++Iter;
+						++iter;
 					}
 				}
 				else
 				{
-					Iter = Observers.erase(Iter);
+					iter = observers_.erase(iter);
 				}
 			}
 
-			Observers.push_back({ Dispatcher, Observer });
+			observers_.push_back({ dispatcher, observer });
 
 			return true;
 		}
 	}
 
-	bool Unsubscribe(const std::shared_ptr<IRideStateObserver>& Observer)
+	bool unsubscribe(const std::shared_ptr<IRideStateObserver>& observer)
 	{
-		if (!Observer)
+		if (!observer)
 		{
 			return false;
 		}
 
 		{
-			std::scoped_lock Lock(ObserversMutex, NotificationsMutex);
+			std::scoped_lock lock(observersMutex_, notificationsMutex_);
 
-			if (bShuttingDown)
+			if (isShuttingDown_)
 			{
 				return false;
 			}
 
-			for (auto Iter = Observers.begin(); Iter != Observers.end();)
+			for (auto iter = observers_.begin(); iter != observers_.end();)
 			{
-				if (auto CurrentObserver = Iter->Observer.lock())
+				if (auto currentObserver = iter->observer.lock())
 				{
-					if (CurrentObserver == Observer)
+					if (currentObserver == observer)
 					{
-						Iter = Observers.erase(Iter);
+						iter = observers_.erase(iter);
 					}
 					else
 					{
-						++Iter;
+						++iter;
 					}
 				}
 				else
 				{
-					Iter = Observers.erase(Iter);
+					iter = observers_.erase(iter);
 				}
 			}
 		}
@@ -257,84 +257,84 @@ public:
 		return true;
 	}
 
-	bool ResetToIdle() { return TryChangingState(RideState::Idle); }
-    bool RequestRide() { return TryChangingState(RideState::Requested); }
-    bool StartBoarding() { return TryChangingState(RideState::PassengerBoarding); }
-    bool StartRide() { return TryChangingState(RideState::InProgress); }
-    bool CompleteRide() { return TryChangingState(RideState::Completed); }
+	bool resetToIdle() { return tryChangingState(RideState::Idle); }
+    bool requestRide() { return tryChangingState(RideState::Requested); }
+    bool startBoarding() { return tryChangingState(RideState::PassengerBoarding); }
+    bool startRide() { return tryChangingState(RideState::InProgress); }
+    bool completeRide() { return tryChangingState(RideState::Completed); }
 
-    RideState GetCurrentState() const
+    RideState getCurrentState() const
 	{
-		std::lock_guard<std::mutex> Lock(RideStateMutex);
-		return CurrentRideState;
+		std::lock_guard<std::mutex> lock(rideStateMutex_);
+		return currentRideState_;
 	}
 
 private:
-    RideState CurrentRideState = RideState::Idle;
-	mutable std::mutex RideStateMutex;
+    RideState currentRideState_ = RideState::Idle;
+	mutable std::mutex rideStateMutex_;
 
-    std::vector<ObserverData> Observers;
-    std::mutex ObserversMutex;
+    std::vector<ObserverData> observers_;
+	std::mutex observersMutex_;
 
-	std::thread ObserverThread;
+	std::thread observerThread_;
 
-	std::queue<NotificationData> NotificationsQueue;
-	std::condition_variable NotificationQueueCV;
-	std::mutex NotificationsMutex;
-	bool bShuttingDown = false;
+	std::queue<NotificationData> notificationsQueue_;
+	std::condition_variable notificationQueueCv_;
+	std::mutex notificationsMutex_;
+	bool isShuttingDown_ = false;
 
-	static constexpr std::size_t MaxPendingNotifications = 1024;
+	static constexpr std::size_t k_maxPendingNotifications = 1024;
 
-	bool TryChangingState(const RideState NextRideState)
+	bool tryChangingState(const RideState nextRideState)
 	{
-		RideState OldRideState;
+		RideState oldRideState;
 
 		{
-			std::scoped_lock Lock(RideStateMutex, NotificationsMutex);
+			std::scoped_lock lock(rideStateMutex_, notificationsMutex_);
 
-			if (!IsValidTransition(CurrentRideState, NextRideState) || (NotificationsQueue.size() >= MaxPendingNotifications) || bShuttingDown)
+			if (!isValidTransition(currentRideState_, nextRideState) || (notificationsQueue_.size() >= k_maxPendingNotifications) || isShuttingDown_)
 			{
 				return false;
 			}
 
-			OldRideState = CurrentRideState;
-			CurrentRideState = NextRideState;
+			oldRideState = currentRideState_;
+			currentRideState_ = nextRideState;
 
-			NotificationsQueue.push({ OldRideState, NextRideState });
+			notificationsQueue_.push({ oldRideState, nextRideState });
 
-			NotificationQueueCV.notify_one();
+			notificationQueueCv_.notify_one();
 		}
 
 		return true;
 	}
 
-	static bool IsValidTransition(RideState Current, RideState Next)
+	static bool isValidTransition(RideState current, RideState next)
 	{
-		switch (Next)
+		switch (next)
 		{
 		case RideState::Idle:
 		{
-			if (Current == RideState::Idle) return false;
+			if (current == RideState::Idle) return false;
 			break;
 		}
 		case RideState::Requested:
 		{
-			if (Current != RideState::Idle) return false;
+			if (current != RideState::Idle) return false;
 			break;
 		}
 		case RideState::PassengerBoarding:
 		{
-			if (Current != RideState::Requested) return false;
+			if (current != RideState::Requested) return false;
 			break;
 		}
 		case RideState::InProgress:
 		{
-			if (Current != RideState::PassengerBoarding) return false;
+			if (current != RideState::PassengerBoarding) return false;
 			break;
 		}
 		case RideState::Completed:
 		{
-			if (Current != RideState::InProgress) return false;
+			if (current != RideState::InProgress) return false;
 			break;
 		}
 		}
